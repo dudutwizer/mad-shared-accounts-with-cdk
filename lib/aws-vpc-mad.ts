@@ -52,10 +52,11 @@ export class VpcMad extends cdk.Construct {
   readonly ad: mad.CfnMicrosoftAD;
   readonly CfnDHCPOptions: ec2.CfnDHCPOptions;
   readonly vpc: ec2.IVpc;
+  readonly domainName : string
 
   constructor(scope: cdk.Construct, id = 'aws-vpc-mad', props: VpcMadProps) {
     super(scope, id);
-    props.domainName = props.domainName ?? 'domain.aws';
+    this.domainName = props.domainName ?? 'domain.aws';
     props.edition = props.edition ?? 'Standard';
     this.vpc = props.vpc ?? new ec2.Vpc(this, id + '-VPC');
 
@@ -64,13 +65,13 @@ export class VpcMad extends cdk.Construct {
       new secretsmanager.Secret(this, id + '-Secret', {
         generateSecretString: {
           secretStringTemplate: JSON.stringify({
-            Domain: props.domainName,
+            Domain: this.domainName,
             UserID: 'Admin',
           }),
           generateStringKey: 'Password',
           excludePunctuation: true,
         },
-        secretName: props.domainName + '-secret',
+        secretName: this.domainName + '-secret',
       });
 
     const subnets = this.vpc.selectSubnets({
@@ -80,11 +81,54 @@ export class VpcMad extends cdk.Construct {
     this.ad = new mad.CfnMicrosoftAD(this, id + '-Mad', {
       password: this.secret.secretValueFromJson('Password').toString(),
       edition: props.edition,
-      name: props.domainName,
+      name: this.domainName,
       vpcSettings: {
         subnetIds: [subnets.subnetIds[0], subnets.subnetIds[1]],
         vpcId: this.vpc.vpcId,
       },
+    });
+
+    new cdk.CfnOutput(this, 'mad-dns', {
+      value: cdk.Fn.join(',', this.ad.attrDnsIpAddresses),
+      exportName: 'mad-dns',
+    });
+  }
+}
+
+/**
+ * The properties for the r53ResolverMad class.
+ */
+ export interface r53ResolverMadProps {
+  /**
+   * The VPC to create the R53 Resolvers in, must have private subnets.
+   * @default - 'Randomly generated'.
+   */
+  vpc: ec2.IVpc;
+  /**
+   * The Managed AD to use in the resolver
+   * @default - 'New Managed AD generated if not provided'.
+   */
+   mad: VpcMad;
+
+   /**
+    * Provide existing resolver in the provided VPC to create rules.
+    * @default - 'New R53 Resolver'
+    */
+  r53resolver?: r53resolver.CfnResolverEndpoint
+}
+
+export class r53ResolverMad extends cdk.Construct {
+  readonly vpc: ec2.IVpc;
+  readonly vpcMad: VpcMad;
+  readonly r53resolver : r53resolver.CfnResolverEndpoint
+
+  constructor(scope: cdk.Construct, id = 'r53-resolver-mad', props: r53ResolverMadProps) {
+    super(scope, id);
+    this.vpc = props.vpc;
+    this.vpcMad = props.mad;
+
+    const subnets = this.vpc.selectSubnets({
+      subnetType: ec2.SubnetType.PRIVATE_WITH_NAT,
     });
 
     const sg = new ec2.SecurityGroup(this, id + 'OutboundResolverSG', {
@@ -93,7 +137,7 @@ export class VpcMad extends cdk.Construct {
     sg.addIngressRule(ec2.Peer.ipv4(this.vpc.vpcCidrBlock), ec2.Port.udp(53));
     sg.addIngressRule(ec2.Peer.ipv4(this.vpc.vpcCidrBlock), ec2.Port.tcp(53));
 
-    const outBoundResolver = new r53resolver.CfnResolverEndpoint(this, 'endpoint', {
+    const outBoundResolver = props.r53resolver ?? new r53resolver.CfnResolverEndpoint(this, 'endpoint', {
       direction: 'OUTBOUND',
       ipAddresses: subnets.subnetIds.map((s) => {
         return { subnetId: s };
@@ -102,20 +146,15 @@ export class VpcMad extends cdk.Construct {
     });
 
     const resolverRules = new r53resolver.CfnResolverRule(this, 'rules', {
-      domainName: props.domainName,
+      domainName: this.vpcMad.domainName,
       resolverEndpointId: outBoundResolver.ref,
       ruleType: 'FORWARD',
-      targetIps: [{ ip: cdk.Fn.select(0, this.ad.attrDnsIpAddresses) }, { ip: cdk.Fn.select(1, this.ad.attrDnsIpAddresses) }],
+      targetIps: [{ ip: cdk.Fn.select(0, this.vpcMad.ad.attrDnsIpAddresses) }, { ip: cdk.Fn.select(1, this.vpcMad.ad.attrDnsIpAddresses) }],
     });
 
-    new r53resolver.CfnResolverRuleAssociation(this, 'assoc', {
+    new r53resolver.CfnResolverRuleAssociation(this, 'assoc-to-vpc' , {
       resolverRuleId: resolverRules.attrResolverRuleId,
       vpcId: this.vpc.vpcId,
-    });
-
-    new cdk.CfnOutput(this, 'mad-dns', {
-      value: cdk.Fn.join(',', this.ad.attrDnsIpAddresses),
-      exportName: 'mad-dns',
     });
   }
 }
