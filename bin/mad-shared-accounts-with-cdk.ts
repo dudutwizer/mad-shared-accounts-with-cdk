@@ -8,7 +8,6 @@ import {
   NetworkingCidr,
 } from "../lib/control-tower";
 import { domainForwarder } from "../lib/aws-vpc-mad";
-import { CfnRoute } from "@aws-cdk/aws-ec2";
 
 const app = new cdk.App();
 
@@ -30,7 +29,6 @@ const networkingCidr: NetworkingCidr = {
   pocAccount: "10.0.3.0/24",
 };
 
-// Deploy first
 const networkingAccount = new NetworkingAccount(
   app,
   "NetworkingAccount",
@@ -39,18 +37,19 @@ const networkingAccount = new NetworkingAccount(
   NetworkingAccountEnv
 );
 
-// Update the tgw ID
+const tgw = "tgw-07e121a2b8c0f8f22"; // Update the tgw ID after launching the Networking Account Stack
+
 const sharedAccount = new SharedResourcesAccount(
   app,
   "SharedAccount",
-  "tgw-09cbe7f958a49340e",
+  tgw,
   networkingCidr,
   SharedResourcesAccountEnv
 );
 
 const DomainForwarder: domainForwarder = {
   domainName: "test.aws",
-  ipAddresses: ["10.0.122.230", "10.0.152.56"],
+  ipAddresses: ["10.0.1.186", "10.0.1.241"],
 };
 
 networkingAccount.addResolverRule(DomainForwarder);
@@ -58,10 +57,14 @@ networkingAccount.addResolverRule(DomainForwarder);
 const genericAccount = new GenericAccount(
   app,
   "GenericAccount",
-  "tgw-09cbe7f958a49340e",
+  tgw,
   networkingCidr,
   POCAccount
 );
 
-// Run it only after sharing!
-genericAccount.addResolver("", DomainForwarder);
+// Run it only after sharing and deploying!
+sharedAccount.updateRouting(networkingCidr.networkingAccount, tgw);
+networkingAccount.updateRouting(networkingCidr.sharedAccount, tgw);
+sharedAccount.assignResolverRule("rslvr-rr-38014310b86f4ad0a");
+genericAccount.updateRouting(networkingCidr.sharedAccount, tgw);
+genericAccount.assignResolverRule("rslvr-rr-38014310b86f4ad0a");

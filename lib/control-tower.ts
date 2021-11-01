@@ -66,27 +66,31 @@ export class NetworkingAccount extends cdk.Stack {
       resourceArns: [arn],
       principals: this.principals,
     });
-
-    this.networkingVPC.privateSubnets.forEach((subnet) => {
-      new CfnRoute(this, "vpc-route-all-tgw-" + subnet.node.id, {
-        routeTableId: subnet.routeTable.routeTableId,
-        destinationCidrBlock: networkingCidr.sharedAccount,
-        transitGatewayId: this.tgw.attrId,
-      });
-    });
   }
 
   addResolverRule(DomainForwarder: domainForwarder) {
     const resolver = new r53ResolverMad(this, "r53resolver-networking", {
       vpc: this.networkingVPC,
       DomainForwarder: DomainForwarder,
-      newResolverEndpoint: true,
     });
     const arn = `arn:aws:route53resolver:${this.tgw.stack.region}:${this.tgw.stack.account}:resolver-rule/${resolver.r53resolverRule.resolverRuleId}`;
     const ramObject = new ram.CfnResourceShare(this, "resolver-share", {
       name: "resolver-share",
       resourceArns: [arn],
       principals: this.principals,
+    });
+    new cdk.CfnOutput(this, "resolverRuleId", {
+      value: resolver.r53resolverRule.resolverRuleId,
+      exportName: "r53-resolverRuleId",
+    });
+  }
+  updateRouting(networkingCidr: string, transitGatewayId: string) {
+    this.networkingVPC.privateSubnets.forEach((subnet) => {
+      new CfnRoute(this, "vpc-route-networking-tgw-" + subnet.node.id, {
+        routeTableId: subnet.routeTable.routeTableId,
+        destinationCidrBlock: networkingCidr,
+        transitGatewayId: transitGatewayId,
+      });
     });
   }
 }
@@ -116,11 +120,22 @@ export class SharedResourcesAccount extends cdk.Stack {
       subnetIds: [subnets.subnetIds[0], subnets.subnetIds[1]],
       transitGatewayId: transitGatewayId,
     });
-
+  }
+  assignResolverRule(resolverRule: string) {
+    new r53resolver.CfnResolverRuleAssociation(
+      this,
+      "assoc-to-vpc-" + resolverRule,
+      {
+        resolverRuleId: resolverRule,
+        vpcId: this.mainVPC.vpc.vpcId,
+      }
+    );
+  }
+  updateRouting(networkingCidr: string, transitGatewayId: string) {
     this.mainVPC.vpc.privateSubnets.forEach((subnet) => {
       new CfnRoute(this, "vpc-route-networking-tgw-" + subnet.node.id, {
         routeTableId: subnet.routeTable.routeTableId,
-        destinationCidrBlock: networkingCidr.networkingAccount,
+        destinationCidrBlock: networkingCidr,
         transitGatewayId: transitGatewayId,
       });
     });
@@ -173,12 +188,23 @@ export class GenericAccount extends cdk.Stack {
     worker.openRDP("83.130.43.233/32");
   }
 
-  addResolver(resolverEndpointId: string, domainForwarder: domainForwarder) {
-    const resolver = new r53ResolverMad(this, "r53resolver-domain", {
-      vpc: this.mainVPC,
-      DomainForwarder: domainForwarder,
-      newResolverEndpoint: false,
-      resolverEndpointId: resolverEndpointId,
+  assignResolverRule(resolverRule: string) {
+    new r53resolver.CfnResolverRuleAssociation(
+      this,
+      "assoc-to-vpc-" + resolverRule,
+      {
+        resolverRuleId: resolverRule,
+        vpcId: this.mainVPC.vpcId,
+      }
+    );
+  }
+  updateRouting(networkingCidr: string, transitGatewayId: string) {
+    this.mainVPC.privateSubnets.forEach((subnet) => {
+      new CfnRoute(this, "vpc-route-networking-tgw-" + subnet.node.id, {
+        routeTableId: subnet.routeTable.routeTableId,
+        destinationCidrBlock: networkingCidr,
+        transitGatewayId: transitGatewayId,
+      });
     });
   }
 }

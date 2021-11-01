@@ -145,18 +145,6 @@ export interface r53ResolverMadProps {
    * The domain rule to forward the request to
    */
   DomainForwarder: domainForwarder;
-
-  /**
-   * Create new ResolverEndpoint
-   * @default : 'True'
-   */
-  newResolverEndpoint?: boolean;
-
-  /**
-   * Existing Resolver ID (CfnResolverRuleProps.resolverEndpointId)
-   * @default : 'Creating new one'
-   */
-  resolverEndpointId?: string;
 }
 
 export class r53ResolverMad extends cdk.Construct {
@@ -173,34 +161,28 @@ export class r53ResolverMad extends cdk.Construct {
     this.vpc = props.vpc;
     this.domainParams = props.DomainForwarder;
 
-    props.newResolverEndpoint = props.newResolverEndpoint ?? true;
-
     const subnets = this.vpc.selectSubnets({
       subnetType: ec2.SubnetType.PRIVATE_WITH_NAT,
     });
 
-    this.resolverEndpointId = props.resolverEndpointId ?? "";
+    const sg = new ec2.SecurityGroup(this, id + "OutboundResolverSG", {
+      vpc: this.vpc,
+    });
+    sg.addIngressRule(ec2.Peer.ipv4(this.vpc.vpcCidrBlock), ec2.Port.udp(53));
 
-    if (props.newResolverEndpoint) {
-      const sg = new ec2.SecurityGroup(this, id + "OutboundResolverSG", {
-        vpc: this.vpc,
-      });
-      sg.addIngressRule(ec2.Peer.ipv4(this.vpc.vpcCidrBlock), ec2.Port.udp(53));
+    const outBoundResolver = new r53resolver.CfnResolverEndpoint(
+      this,
+      "endpoint",
+      {
+        direction: "OUTBOUND",
+        ipAddresses: subnets.subnetIds.map((s) => {
+          return { subnetId: s };
+        }),
+        securityGroupIds: [sg.securityGroupId],
+      }
+    );
 
-      const outBoundResolver = new r53resolver.CfnResolverEndpoint(
-        this,
-        "endpoint",
-        {
-          direction: "OUTBOUND",
-          ipAddresses: subnets.subnetIds.map((s) => {
-            return { subnetId: s };
-          }),
-          securityGroupIds: [sg.securityGroupId],
-        }
-      );
-
-      this.resolverEndpointId = outBoundResolver.ref;
-    }
+    this.resolverEndpointId = outBoundResolver.ref;
 
     const resolverRules = new r53resolver.CfnResolverRule(this, "rules", {
       domainName: this.domainParams.domainName,
