@@ -52,8 +52,6 @@ const DomainForwarder: domainForwarder = {
   ipAddresses: ["10.0.1.186", "10.0.1.241"],
 };
 
-networkingAccount.addResolverRule(DomainForwarder);
-
 const genericAccount = new GenericAccount(
   app,
   "GenericAccount",
@@ -62,9 +60,16 @@ const genericAccount = new GenericAccount(
   POCAccount
 );
 
-// Run it only after sharing and deploying!
-sharedAccount.updateRouting(networkingCidr.networkingAccount, tgw);
-networkingAccount.updateRouting(networkingCidr.sharedAccount, tgw);
+// Run it after deploying Networking Stack
+networkingAccount.addResolverRule(DomainForwarder);
+
+// Run it after deploying SharedAccount Stack and Networking stack
+sharedAccount.updateRouting(networkingCidr.pocAccount, tgw); // Active Directory --> Poc Account
 sharedAccount.assignResolverRule("rslvr-rr-38014310b86f4ad0a");
-genericAccount.updateRouting(networkingCidr.sharedAccount, tgw);
+
+// Run it after deploying SharedAccount, Networking and Generic stacks
+genericAccount.updateRouting(networkingCidr.sharedAccount, tgw); // Poc Account --> Active Directory
 genericAccount.assignResolverRule("rslvr-rr-38014310b86f4ad0a");
+
+// last step
+genericAccount.launchMachine("test.aws-secret");

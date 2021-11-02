@@ -133,7 +133,7 @@ export class SharedResourcesAccount extends cdk.Stack {
   }
   updateRouting(networkingCidr: string, transitGatewayId: string) {
     this.mainVPC.vpc.privateSubnets.forEach((subnet) => {
-      new CfnRoute(this, "vpc-route-networking-tgw-" + subnet.node.id, {
+      new CfnRoute(this, "route-" + subnet.node.id + "->" + networkingCidr, {
         routeTableId: subnet.routeTable.routeTableId,
         destinationCidrBlock: networkingCidr,
         transitGatewayId: transitGatewayId,
@@ -164,19 +164,12 @@ export class GenericAccount extends cdk.Stack {
       subnetIds: [subnets.subnetIds[0], subnets.subnetIds[1]],
       transitGatewayId: transitGatewayId,
     });
+  }
 
-    this.mainVPC.privateSubnets.forEach((subnet) => {
-      new CfnRoute(this, "vpc-route-to-shared-via-tgw-" + subnet.node.id, {
-        routeTableId: subnet.routeTable.routeTableId,
-        destinationCidrBlock: networkingCidr.sharedAccount,
-        transitGatewayId: transitGatewayId,
-      });
-    });
-
+  launchMachine(secretName: string) {
     const worker = new WindowsWorker(this, "WindowsWorker", {
       vpc: this.mainVPC,
       joinUsingMad: false,
-      secretName: "test.aws-secret",
       iamManagedPoliciesList: [
         iam.ManagedPolicy.fromAwsManagedPolicyName(
           "AmazonSSMManagedInstanceCore"
@@ -199,8 +192,15 @@ export class GenericAccount extends cdk.Stack {
     );
   }
   updateRouting(networkingCidr: string, transitGatewayId: string) {
+    this.mainVPC.publicSubnets.forEach((subnet) => {
+      new CfnRoute(this, "route-" + subnet.node.id + "->" + networkingCidr, {
+        routeTableId: subnet.routeTable.routeTableId,
+        destinationCidrBlock: networkingCidr,
+        transitGatewayId: transitGatewayId,
+      });
+    });
     this.mainVPC.privateSubnets.forEach((subnet) => {
-      new CfnRoute(this, "vpc-route-networking-tgw-" + subnet.node.id, {
+      new CfnRoute(this, "route-" + subnet.node.id + "->" + networkingCidr, {
         routeTableId: subnet.routeTable.routeTableId,
         destinationCidrBlock: networkingCidr,
         transitGatewayId: transitGatewayId,
