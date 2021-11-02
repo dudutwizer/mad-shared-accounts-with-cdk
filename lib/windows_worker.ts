@@ -23,7 +23,7 @@ export class WindowsWorker extends cdk.Construct {
     if (props.joinUsingMad) {
       props.madObject = props.madObject!;
     } else {
-      props.secretName = props.secretName!;
+      props.secretArn = props.secretArn!;
     }
 
     props.usePrivateSubnet = props.usePrivateSubnet ?? false;
@@ -32,9 +32,33 @@ export class WindowsWorker extends cdk.Construct {
       ec2.WindowsVersion.WINDOWS_SERVER_2019_ENGLISH_FULL_BASE
     );
 
-    const role = new iam.Role(this, "WindowsWorkerRole-" + id, {
+    const decryptKMS = new iam.PolicyDocument({
+      statements: [
+        new iam.PolicyStatement({
+          resources: [props.kmsArn ?? ""],
+          actions: ["kms:Decrypt"],
+        }),
+      ],
+    });
+
+    const secretAccess = new iam.PolicyDocument({
+      statements: [
+        new iam.PolicyStatement({
+          resources: [props.secretArn ?? ""],
+          actions: ["secretsmanager:GetSecretValue"],
+        }),
+      ],
+    });
+
+    const role = new iam.Role(this, "WindowsWorkerRole", {
       assumedBy: new iam.ServicePrincipal("ec2.amazonaws.com"),
       managedPolicies: props.iamManagedPoliciesList,
+      inlinePolicies: { DecryptKMS: decryptKMS, SecretAccess: secretAccess },
+    });
+
+    new cdk.CfnOutput(this, "worker-role-arn", {
+      value: role.roleArn,
+      exportName: "worker-role-arn",
     });
 
     const securityGroup = new SecurityGroup(this, "instanceWorkerSG", {
@@ -42,7 +66,7 @@ export class WindowsWorker extends cdk.Construct {
     });
 
     this.worker = new ec2.Instance(this, "Workernode", {
-      instanceType: props.InstanceType ?? new ec2.InstanceType("m5.2xlarge"),
+      instanceType: props.InstanceType ?? new ec2.InstanceType("t3.medium"),
       machineImage: ami_id,
       vpc: props.vpc,
       role: role,
@@ -71,8 +95,8 @@ export class WindowsWorker extends cdk.Construct {
     } else {
       this.worker.addUserData(`
 
-      #domain join with secret from secret manager
-      [string]$SecretAD  = "${props.secretName!}"
+      #domain join with secret from secret manager cross account using full ARN
+      [string]$SecretAD  = "${props.secretArn!}"
       $SecretObj = Get-SECSecretValue -SecretId $SecretAD
       [PSCustomObject]$Secret = ($SecretObj.SecretString  | ConvertFrom-Json)
       $password   = $Secret.Password | ConvertTo-SecureString -asPlainText -Force
@@ -133,9 +157,13 @@ export interface WindowsWorkerProps {
    */
   joinUsingMad: boolean;
   /**
-   * secretName stored in Secret manager
+   * secretArn stored in Secret manager
    */
-  secretName?: string;
+  secretArn?: string;
+  /**
+   * KMSArn
+   */
+  kmsArn?: string;
   /**
    * Managed AD object to join to
    */

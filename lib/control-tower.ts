@@ -25,6 +25,7 @@ export class NetworkingAccount extends cdk.Stack {
   readonly networkingVPC: ec2.Vpc;
   readonly tgw: ec2.CfnTransitGateway;
   readonly principals: string[];
+  readonly vpcAttach: ec2.CfnTransitGatewayVpcAttachment;
   constructor(
     scope: cdk.Construct,
     id: string,
@@ -49,7 +50,7 @@ export class NetworkingAccount extends cdk.Stack {
       subnetType: ec2.SubnetType.PRIVATE_WITH_NAT,
     });
 
-    new ec2.CfnTransitGatewayVpcAttachment(this, "net-tgw", {
+    this.vpcAttach = new ec2.CfnTransitGatewayVpcAttachment(this, "net-tgw", {
       vpcId: this.networkingVPC.vpcId,
       subnetIds: [subnets.subnetIds[0], subnets.subnetIds[1]],
       transitGatewayId: this.tgw.attrId,
@@ -68,11 +69,22 @@ export class NetworkingAccount extends cdk.Stack {
     });
   }
 
+  updateRouting(networkingCidr: string, transitGatewayId: string) {
+    this.networkingVPC.privateSubnets.forEach((subnet) => {
+      new CfnRoute(this, "route-" + subnet.node.id + "->" + networkingCidr, {
+        routeTableId: subnet.routeTable.routeTableId,
+        destinationCidrBlock: networkingCidr,
+        transitGatewayId: transitGatewayId,
+      }).addDependsOn(this.vpcAttach);
+    });
+  }
+
   addResolverRule(DomainForwarder: domainForwarder) {
     const resolver = new r53ResolverMad(this, "r53resolver-networking", {
       vpc: this.networkingVPC,
       DomainForwarder: DomainForwarder,
     });
+    resolver.r53resolverRule.addDependsOn(this.tgw);
     const arn = `arn:aws:route53resolver:${this.tgw.stack.region}:${this.tgw.stack.account}:resolver-rule/${resolver.r53resolverRule.resolverRuleId}`;
     const ramObject = new ram.CfnResourceShare(this, "resolver-share", {
       name: "resolver-share",
@@ -84,19 +96,11 @@ export class NetworkingAccount extends cdk.Stack {
       exportName: "r53-resolverRuleId",
     });
   }
-  updateRouting(networkingCidr: string, transitGatewayId: string) {
-    this.networkingVPC.privateSubnets.forEach((subnet) => {
-      new CfnRoute(this, "vpc-route-networking-tgw-" + subnet.node.id, {
-        routeTableId: subnet.routeTable.routeTableId,
-        destinationCidrBlock: networkingCidr,
-        transitGatewayId: transitGatewayId,
-      });
-    });
-  }
 }
 
 export class SharedResourcesAccount extends cdk.Stack {
   readonly mainVPC: VpcMad;
+  readonly vpcAttach: ec2.CfnTransitGatewayVpcAttachment;
   constructor(
     scope: cdk.Construct,
     id: string,
@@ -115,7 +119,7 @@ export class SharedResourcesAccount extends cdk.Stack {
     const subnets = this.mainVPC.vpc.selectSubnets({
       subnetType: ec2.SubnetType.PRIVATE_WITH_NAT,
     });
-    const vpcAttach = new ec2.CfnTransitGatewayVpcAttachment(this, "net-tgw", {
+    this.vpcAttach = new ec2.CfnTransitGatewayVpcAttachment(this, "net-tgw", {
       vpcId: this.mainVPC.vpc.vpcId,
       subnetIds: [subnets.subnetIds[0], subnets.subnetIds[1]],
       transitGatewayId: transitGatewayId,
@@ -137,13 +141,14 @@ export class SharedResourcesAccount extends cdk.Stack {
         routeTableId: subnet.routeTable.routeTableId,
         destinationCidrBlock: networkingCidr,
         transitGatewayId: transitGatewayId,
-      });
+      }).addDependsOn(this.vpcAttach);
     });
   }
 }
 
 export class GenericAccount extends cdk.Stack {
   readonly mainVPC: ec2.Vpc;
+  readonly vpcAttach: ec2.CfnTransitGatewayVpcAttachment;
   constructor(
     scope: cdk.Construct,
     id: string,
@@ -159,17 +164,19 @@ export class GenericAccount extends cdk.Stack {
     const subnets = this.mainVPC.selectSubnets({
       subnetType: ec2.SubnetType.PRIVATE_WITH_NAT,
     });
-    const vpcAttach = new ec2.CfnTransitGatewayVpcAttachment(this, "net-tgw", {
+    this.vpcAttach = new ec2.CfnTransitGatewayVpcAttachment(this, "net-tgw", {
       vpcId: this.mainVPC.vpcId,
       subnetIds: [subnets.subnetIds[0], subnets.subnetIds[1]],
       transitGatewayId: transitGatewayId,
     });
   }
 
-  launchMachine(secretName: string) {
+  launchMachine(secretArn: string, kmsArn: string) {
     const worker = new WindowsWorker(this, "WindowsWorker", {
       vpc: this.mainVPC,
       joinUsingMad: false,
+      secretArn: secretArn,
+      kmsArn: kmsArn,
       iamManagedPoliciesList: [
         iam.ManagedPolicy.fromAwsManagedPolicyName(
           "AmazonSSMManagedInstanceCore"
@@ -197,14 +204,14 @@ export class GenericAccount extends cdk.Stack {
         routeTableId: subnet.routeTable.routeTableId,
         destinationCidrBlock: networkingCidr,
         transitGatewayId: transitGatewayId,
-      });
+      }).addDependsOn(this.vpcAttach);
     });
     this.mainVPC.privateSubnets.forEach((subnet) => {
       new CfnRoute(this, "route-" + subnet.node.id + "->" + networkingCidr, {
         routeTableId: subnet.routeTable.routeTableId,
         destinationCidrBlock: networkingCidr,
         transitGatewayId: transitGatewayId,
-      });
+      }).addDependsOn(this.vpcAttach);
     });
   }
 }

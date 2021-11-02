@@ -29,6 +29,28 @@ const networkingCidr: NetworkingCidr = {
   pocAccount: "10.0.3.0/24",
 };
 
+// Start by deploying the network stack, to the network Account.
+
+const tgw = "tgw-07e121a2b8c0f8f22"; // Update the tgw ID after launching the Networking Account Stack
+const resolverID = "rslvr-rr-38014310b86f4ad0a"; // Update the resolver ID after launching the Networking Account Stack
+
+// Now deploy the Shared Account stack.
+
+const DomainForwarder: domainForwarder = {
+  // Update the value after launching the Shared Account stack (redeploy the NetworkStack after update)
+  domainName: "test.aws",
+  ipAddresses: ["10.0.1.162", "10.0.1.228"],
+};
+
+const secretArn = // Update the value after launching the Shared Account stack
+  "arn:aws:secretsmanager:us-east-1:117923233529:secret:test.aws-secret-lEO8rL";
+
+// Now deploy the Generic Account Stack
+
+const machineArn = // Update the value after launching the Generic Account stack, then redeploy the EC2 Instance
+  "arn:aws:iam::656988738169:role/GenericAccount-WindowsWorkerWindowsWorkerRole24AE3-4Y6GHJU8Z0Q4";
+//*************************************************//
+
 const networkingAccount = new NetworkingAccount(
   app,
   "NetworkingAccount",
@@ -36,8 +58,6 @@ const networkingAccount = new NetworkingAccount(
   networkingCidr,
   NetworkingAccountEnv
 );
-
-const tgw = "tgw-07e121a2b8c0f8f22"; // Update the tgw ID after launching the Networking Account Stack
 
 const sharedAccount = new SharedResourcesAccount(
   app,
@@ -47,11 +67,6 @@ const sharedAccount = new SharedResourcesAccount(
   SharedResourcesAccountEnv
 );
 
-const DomainForwarder: domainForwarder = {
-  domainName: "test.aws",
-  ipAddresses: ["10.0.1.186", "10.0.1.241"],
-};
-
 const genericAccount = new GenericAccount(
   app,
   "GenericAccount",
@@ -60,16 +75,23 @@ const genericAccount = new GenericAccount(
   POCAccount
 );
 
-// Run it after deploying Networking Stack
 networkingAccount.addResolverRule(DomainForwarder);
+networkingAccount.updateRouting(networkingCidr.pocAccount, tgw); // Resolver -> POC
+networkingAccount.updateRouting(networkingCidr.sharedAccount, tgw); // Resolver -> DC
 
-// Run it after deploying SharedAccount Stack and Networking stack
-sharedAccount.updateRouting(networkingCidr.pocAccount, tgw); // Active Directory --> Poc Account
-sharedAccount.assignResolverRule("rslvr-rr-38014310b86f4ad0a");
+sharedAccount.updateRouting(networkingCidr.pocAccount, tgw); // DC -> POC
+sharedAccount.updateRouting(networkingCidr.networkingAccount, tgw); // DC -> Resolver
 
-// Run it after deploying SharedAccount, Networking and Generic stacks
-genericAccount.updateRouting(networkingCidr.sharedAccount, tgw); // Poc Account --> Active Directory
-genericAccount.assignResolverRule("rslvr-rr-38014310b86f4ad0a");
+sharedAccount.assignResolverRule(resolverID);
+genericAccount.updateRouting(networkingCidr.sharedAccount, tgw); // POC -> DC
+genericAccount.updateRouting(networkingCidr.networkingAccount, tgw); // POC -> Resolver
+genericAccount.assignResolverRule(resolverID);
 
-// last step
-genericAccount.launchMachine("test.aws-secret");
+// Add permission before launching the machine
+
+sharedAccount.mainVPC.addPermissionsToSecret(machineArn);
+
+genericAccount.launchMachine(
+  secretArn,
+  "arn:aws:kms:us-east-1:117923233529:key/be764501-5293-4b44-bb13-fcb5e613a3e9"
+);

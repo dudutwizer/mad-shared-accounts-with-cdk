@@ -16,6 +16,8 @@ import * as cdk from "@aws-cdk/core";
 import * as secretsmanager from "@aws-cdk/aws-secretsmanager";
 import * as mad from "@aws-cdk/aws-directoryservice";
 import * as ec2 from "@aws-cdk/aws-ec2";
+import * as iam from "@aws-cdk/aws-iam";
+import * as kms from "@aws-cdk/aws-kms";
 import * as r53resolver from "@aws-cdk/aws-route53resolver";
 import { CfnResolverRuleProps } from "@aws-cdk/aws-route53resolver";
 
@@ -73,6 +75,7 @@ export class VpcMad extends cdk.Construct {
   readonly CfnDHCPOptions: ec2.CfnDHCPOptions;
   readonly vpc: ec2.IVpc;
   readonly domainName: string;
+  readonly key: kms.Key;
 
   constructor(scope: cdk.Construct, id = "aws-vpc-mad", props: VpcMadProps) {
     super(scope, id);
@@ -85,6 +88,7 @@ export class VpcMad extends cdk.Construct {
         cidr: props.cidr ?? "10.0.0.0/16",
       });
 
+    this.key = new kms.Key(this, "KMS", { description: "KMS for AD" });
     const secretName = this.domainName + "-secret";
     this.secret =
       props.secret ??
@@ -98,6 +102,7 @@ export class VpcMad extends cdk.Construct {
           excludePunctuation: true,
         },
         secretName: secretName,
+        encryptionKey: this.key,
       });
 
     const subnets = this.vpc.selectSubnets({
@@ -119,6 +124,16 @@ export class VpcMad extends cdk.Construct {
       exportName: "mad-secret-name",
     });
 
+    new cdk.CfnOutput(this, "mad-secret-arn", {
+      value: this.secret.secretArn,
+      exportName: "mad-secret-arn",
+    });
+
+    new cdk.CfnOutput(this, "mad-kms-arn", {
+      value: this.key.keyArn,
+      exportName: "mad-kms-arn",
+    });
+
     new cdk.CfnOutput(this, "mad-dns", {
       value: cdk.Fn.join(",", this.ad.attrDnsIpAddresses),
       exportName: "mad-dns",
@@ -128,6 +143,10 @@ export class VpcMad extends cdk.Construct {
       value: this.domainName,
       exportName: "mad-domain-name",
     });
+  }
+  addPermissionsToSecret(arn: string) {
+    this.secret.grantRead(new iam.ArnPrincipal(arn));
+    this.key.grantDecrypt(new iam.ArnPrincipal(arn));
   }
 }
 
