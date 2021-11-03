@@ -39,15 +39,15 @@ const app = new cdk.App();
 
 // Account configuration
 const SharedResourcesAccountEnv = {
-  env: { account: "117923233529", region: "us-east-1" },
+  env: { account: "<account-id-1>", region: "us-east-1" },
 };
 
 const NetworkingAccountEnv = {
-  env: { account: "527610730990", region: "us-east-1" },
+  env: { account: "<account-id-2>", region: "us-east-1" },
 };
 
 const POCAccount = {
-  env: { account: "656988738169", region: "us-east-1" },
+  env: { account: "<account-id-3>", region: "us-east-1" },
 };
 
 // Account segmentation
@@ -57,28 +57,29 @@ const networkingCidr: NetworkingCidr = {
   pocAccount: "10.0.3.0/24",
 };
 
+// Set the domain name you want that the Managed AD to be
+const ManagedAD_Domain_name = "test.aws";
+
 // Start by deploying the network stack, to the network Account.
-const tgw = "tgw-07e121a2b8c0f8f22"; // Update the tgw ID after launching the Networking Account Stack
-const resolverID = "rslvr-rr-38014310b86f4ad0a"; // Update the resolver ID after launching the Networking Account Stack
+const tgw = "tgw-<id-of-the-tg>"; // Update the tgw ID after launching the Networking Account Stack
+const resolverID = "rslvr-<resolver-id>"; // Update the resolver ID after launching the Networking Account Stack
 
 // Now deploy the Shared Account stack.
 
 const DomainForwarder: domainForwarder = {
   // Update the value after launching the Shared Account stack (redeploy the NetworkStack after update)
-  domainName: "test.aws",
-  ipAddresses: ["10.0.1.162", "10.0.1.228"],
+  domainName: ManagedAD_Domain_name,
+  ipAddresses: ["<ip-address-1>", "<-ip-address-2>"],
 };
 
 const secretArn = // Update the value after launching the Shared Account stack
-  "arn:aws:secretsmanager:us-east-1:117923233529:secret:test.aws-secret-lEO8rL";
+  "arn:aws:secretsmanager:us-east-1:<account-id>:secret:<secret-name>";
 
-const kmsArn = // Update the value after launching the Shared Account stack
-  "arn:aws:kms:us-east-1:117923233529:key/be764501-5293-4b44-bb13-fcb5e613a3e9";
+const kmsArn = "arn:aws:kms:us-east-1:<account-id>:key/<key-id>"; // Update the value after launching the Shared Account stack
 
 // Now deploy the Generic Account Stack
 
-const machineInstanceRoleArn = // Update the value after launching the Generic Account stack, then redeploy the SharedAccount, then redeploy the EC2 Instance
-  "arn:aws:iam::656988738169:role/GenericAccount-WindowsWorkerRoleC6758138-Z56Y3IDGQ28O";
+const machineInstanceRoleArn = "arn:aws:iam::<account-id>:role/<role-id>"; // Update the value after launching the Generic Account stack, then redeploy the SharedAccount, then redeploy the EC2 Instance
 
 //*************************************************//
 
