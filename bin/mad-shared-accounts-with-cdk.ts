@@ -1,16 +1,43 @@
 #!/usr/bin/env node
+/**
+ *  Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance
+ *  with the License. A copy of the License is located at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  or in the 'license' file accompanying this file. This file is distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES
+ *  OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions
+ *  and limitations under the License.
+ */
+
+// Imports
 import "source-map-support/register";
 import * as cdk from "@aws-cdk/core";
-import {
-  SharedResourcesAccount,
-  NetworkingAccount,
-  GenericAccount,
-  NetworkingCidr,
-} from "../lib/control-tower";
-import { domainForwarder } from "../lib/aws-vpc-mad";
+import { NetworkingCidr } from "../lib/interfaces";
+import { GenericAccount } from "../lib/control-tower/GenericAccount";
+import { SharedResourcesAccount } from "../lib/control-tower/SharedResourcesAccount";
+import { NetworkingAccount } from "../lib/control-tower/NetworkingAccount";
+import { domainForwarder } from "../lib/interfaces";
+
+//**************************************************************//
+//******* High Level Guide for deploying the solution **********//
+//**************************************************************//
+// * Step 1: Configure accounts and IP segmentation           **//
+// * Step 2: Deploy the NetworkingAccount Stack               **//
+// * Step 3: Manually edit the `tgw` and the `resolverID`     **//
+// * Step 4: Deploy the SharedAccount Stack                   **//
+// * Step 5: Manually edit the `DomainForwarder`, `secretArn` **//
+// *         and the `kmsArn`                                 **//
+// * Step 6: Deploy the GenericAccount Stack                  **//
+// * Step 7: Manually edit the  `machineInstanceRoleArn`      **//
+// * Step 8: Launch machine using the launchMachine() method  **//
+//**************************************************************//
 
 const app = new cdk.App();
 
+// Account configuration
 const SharedResourcesAccountEnv = {
   env: { account: "117923233529", region: "us-east-1" },
 };
@@ -23,6 +50,7 @@ const POCAccount = {
   env: { account: "656988738169", region: "us-east-1" },
 };
 
+// Account segmentation
 const networkingCidr: NetworkingCidr = {
   sharedAccount: "10.0.1.0/24",
   networkingAccount: "10.0.2.0/24",
@@ -30,7 +58,6 @@ const networkingCidr: NetworkingCidr = {
 };
 
 // Start by deploying the network stack, to the network Account.
-
 const tgw = "tgw-07e121a2b8c0f8f22"; // Update the tgw ID after launching the Networking Account Stack
 const resolverID = "rslvr-rr-38014310b86f4ad0a"; // Update the resolver ID after launching the Networking Account Stack
 

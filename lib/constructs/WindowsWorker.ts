@@ -1,3 +1,17 @@
+/**
+ *  Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance
+ *  with the License. A copy of the License is located at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  or in the 'license' file accompanying this file. This file is distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES
+ *  OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions
+ *  and limitations under the License.
+ */
+
+// Imports
 import * as cdk from "@aws-cdk/core";
 import * as ec2 from "@aws-cdk/aws-ec2";
 import { CfnAssociation, CfnDocument } from "@aws-cdk/aws-ssm";
@@ -5,6 +19,44 @@ import { IManagedPolicy } from "@aws-cdk/aws-iam";
 import * as iam from "@aws-cdk/aws-iam";
 import * as mad from "@aws-cdk/aws-directoryservice";
 import { SecurityGroup } from "@aws-cdk/aws-ec2";
+
+export interface WindowsWorkerProps {
+  /**
+   * The VPC to use <required>
+   * @default - 'No default'.
+   */
+  vpc: ec2.IVpc;
+  /**
+   * Instance Role
+   * @default - 'No default'.
+   */
+  instanceRole: iam.Role;
+  /**
+   * The EC2 Instance type to use
+   *
+   * @default - 'm5.2xlarge'.
+   */
+  InstanceType?: ec2.InstanceType;
+  /**
+   * Choose if to launch the instance in Private or in Public subnet
+   * Private = Subnet that routes to the internet, but not vice versa.
+   * Public = Subnet that routes to the internet and vice versa.
+   * @default - Private.
+   */
+  usePrivateSubnet?: boolean;
+  /**
+   * Join the domain using MAD or manually? if manually need to provide secret name from SecretManager, if MAD need to provide madObject
+   */
+  joinUsingMad: boolean;
+  /**
+   * secretArn stored in Secret manager
+   */
+  secretArn?: string;
+  /**
+   * KMSArn
+   */
+  madObject?: mad.CfnMicrosoftAD;
+}
 
 export class WindowsWorker extends cdk.Construct {
   readonly worker: ec2.Instance;
@@ -90,42 +142,4 @@ export class WindowsWorker extends cdk.Construct {
       "Allow RDP"
     );
   }
-}
-
-export interface WindowsWorkerProps {
-  /**
-   * The VPC to use <required>
-   * @default - 'No default'.
-   */
-  vpc: ec2.IVpc;
-  /**
-   * Instance Role
-   * @default - 'No default'.
-   */
-  instanceRole: iam.Role;
-  /**
-   * The EC2 Instance type to use
-   *
-   * @default - 'm5.2xlarge'.
-   */
-  InstanceType?: ec2.InstanceType;
-  /**
-   * Choose if to launch the instance in Private or in Public subnet
-   * Private = Subnet that routes to the internet, but not vice versa.
-   * Public = Subnet that routes to the internet and vice versa.
-   * @default - Private.
-   */
-  usePrivateSubnet?: boolean;
-  /**
-   * Join the domain using MAD or manually? if manually need to provide secret name from SecretManager, if MAD need to provide madObject
-   */
-  joinUsingMad: boolean;
-  /**
-   * secretArn stored in Secret manager
-   */
-  secretArn?: string;
-  /**
-   * KMSArn
-   */
-  madObject?: mad.CfnMicrosoftAD;
 }
