@@ -149,11 +149,14 @@ export class SharedResourcesAccount extends cdk.Stack {
 export class GenericAccount extends cdk.Stack {
   readonly mainVPC: ec2.Vpc;
   readonly vpcAttach: ec2.CfnTransitGatewayVpcAttachment;
+  readonly instanceRole: iam.Role;
   constructor(
     scope: cdk.Construct,
     id: string,
     transitGatewayId: string,
     networkingCidr: NetworkingCidr,
+    secretArn: string,
+    kmsArn: string,
     props?: cdk.StackProps
   ) {
     super(scope, id, props);
@@ -161,6 +164,40 @@ export class GenericAccount extends cdk.Stack {
       maxAzs: 2,
       cidr: networkingCidr.pocAccount,
     });
+
+    const decryptKMS = new iam.PolicyDocument({
+      statements: [
+        new iam.PolicyStatement({
+          resources: [kmsArn],
+          actions: ["kms:Decrypt"],
+        }),
+      ],
+    });
+
+    const secretAccess = new iam.PolicyDocument({
+      statements: [
+        new iam.PolicyStatement({
+          resources: [secretArn],
+          actions: ["secretsmanager:GetSecretValue"],
+        }),
+      ],
+    });
+
+    this.instanceRole = new iam.Role(this, "WindowsWorkerRole", {
+      assumedBy: new iam.ServicePrincipal("ec2.amazonaws.com"),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "AmazonSSMManagedInstanceCore"
+        ),
+      ],
+      inlinePolicies: { DecryptKMS: decryptKMS, SecretAccess: secretAccess },
+    });
+
+    new cdk.CfnOutput(this, "worker-role-arn", {
+      value: this.instanceRole.roleArn,
+      exportName: "worker-role-arn",
+    });
+
     const subnets = this.mainVPC.selectSubnets({
       subnetType: ec2.SubnetType.PRIVATE_WITH_NAT,
     });
@@ -171,18 +208,12 @@ export class GenericAccount extends cdk.Stack {
     });
   }
 
-  launchMachine(secretArn: string, kmsArn: string) {
+  launchMachine(secretArn: string) {
     const worker = new WindowsWorker(this, "WindowsWorker", {
       vpc: this.mainVPC,
       joinUsingMad: false,
+      instanceRole: this.instanceRole,
       secretArn: secretArn,
-      kmsArn: kmsArn,
-      iamManagedPoliciesList: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName(
-          "AmazonSSMManagedInstanceCore"
-        ),
-        iam.ManagedPolicy.fromAwsManagedPolicyName("SecretsManagerReadWrite"),
-      ],
     });
 
     worker.openRDP("83.130.43.233/32");

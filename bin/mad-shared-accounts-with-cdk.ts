@@ -45,10 +45,14 @@ const DomainForwarder: domainForwarder = {
 const secretArn = // Update the value after launching the Shared Account stack
   "arn:aws:secretsmanager:us-east-1:117923233529:secret:test.aws-secret-lEO8rL";
 
+const kmsArn = // Update the value after launching the Shared Account stack
+  "arn:aws:kms:us-east-1:117923233529:key/be764501-5293-4b44-bb13-fcb5e613a3e9";
+
 // Now deploy the Generic Account Stack
 
-const machineArn = // Update the value after launching the Generic Account stack, then redeploy the EC2 Instance
-  "arn:aws:iam::656988738169:role/GenericAccount-WindowsWorkerWindowsWorkerRole24AE3-4Y6GHJU8Z0Q4";
+const machineInstanceRoleArn = // Update the value after launching the Generic Account stack, then redeploy the SharedAccount, then redeploy the EC2 Instance
+  "arn:aws:iam::656988738169:role/GenericAccount-WindowsWorkerRoleC6758138-Z56Y3IDGQ28O";
+
 //*************************************************//
 
 const networkingAccount = new NetworkingAccount(
@@ -72,26 +76,25 @@ const genericAccount = new GenericAccount(
   "GenericAccount",
   tgw,
   networkingCidr,
+  secretArn,
+  kmsArn,
   POCAccount
 );
 
-networkingAccount.addResolverRule(DomainForwarder);
 networkingAccount.updateRouting(networkingCidr.pocAccount, tgw); // Resolver -> POC
 networkingAccount.updateRouting(networkingCidr.sharedAccount, tgw); // Resolver -> DC
+networkingAccount.addResolverRule(DomainForwarder);
 
 sharedAccount.updateRouting(networkingCidr.pocAccount, tgw); // DC -> POC
 sharedAccount.updateRouting(networkingCidr.networkingAccount, tgw); // DC -> Resolver
-
 sharedAccount.assignResolverRule(resolverID);
+
 genericAccount.updateRouting(networkingCidr.sharedAccount, tgw); // POC -> DC
 genericAccount.updateRouting(networkingCidr.networkingAccount, tgw); // POC -> Resolver
 genericAccount.assignResolverRule(resolverID);
 
 // Add permission before launching the machine
+sharedAccount.mainVPC.addPermissionsToSecret(machineInstanceRoleArn);
 
-sharedAccount.mainVPC.addPermissionsToSecret(machineArn);
-
-genericAccount.launchMachine(
-  secretArn,
-  "arn:aws:kms:us-east-1:117923233529:key/be764501-5293-4b44-bb13-fcb5e613a3e9"
-);
+// Launch the machine only after confirming that the instance role Arn has permissions (using the addPermissionsToSecret() )
+genericAccount.launchMachine(secretArn);

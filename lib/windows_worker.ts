@@ -14,16 +14,9 @@ export class WindowsWorker extends cdk.Construct {
     props: WindowsWorkerProps
   ) {
     super(scope, id);
-    props.iamManagedPoliciesList = props.iamManagedPoliciesList ?? [
-      iam.ManagedPolicy.fromAwsManagedPolicyName(
-        "AmazonSSMManagedInstanceCore"
-      ),
-    ];
 
     if (props.joinUsingMad) {
       props.madObject = props.madObject!;
-    } else {
-      props.secretArn = props.secretArn!;
     }
 
     props.usePrivateSubnet = props.usePrivateSubnet ?? false;
@@ -31,35 +24,6 @@ export class WindowsWorker extends cdk.Construct {
     const ami_id = new ec2.WindowsImage(
       ec2.WindowsVersion.WINDOWS_SERVER_2019_ENGLISH_FULL_BASE
     );
-
-    const decryptKMS = new iam.PolicyDocument({
-      statements: [
-        new iam.PolicyStatement({
-          resources: [props.kmsArn ?? ""],
-          actions: ["kms:Decrypt"],
-        }),
-      ],
-    });
-
-    const secretAccess = new iam.PolicyDocument({
-      statements: [
-        new iam.PolicyStatement({
-          resources: [props.secretArn ?? ""],
-          actions: ["secretsmanager:GetSecretValue"],
-        }),
-      ],
-    });
-
-    const role = new iam.Role(this, "WindowsWorkerRole", {
-      assumedBy: new iam.ServicePrincipal("ec2.amazonaws.com"),
-      managedPolicies: props.iamManagedPoliciesList,
-      inlinePolicies: { DecryptKMS: decryptKMS, SecretAccess: secretAccess },
-    });
-
-    new cdk.CfnOutput(this, "worker-role-arn", {
-      value: role.roleArn,
-      exportName: "worker-role-arn",
-    });
 
     const securityGroup = new SecurityGroup(this, "instanceWorkerSG", {
       vpc: props.vpc,
@@ -69,7 +33,7 @@ export class WindowsWorker extends cdk.Construct {
       instanceType: props.InstanceType ?? new ec2.InstanceType("t3.medium"),
       machineImage: ami_id,
       vpc: props.vpc,
-      role: role,
+      role: props.instanceRole,
       securityGroup: securityGroup,
       vpcSubnets: props.vpc.selectSubnets({
         subnetType: props.usePrivateSubnet
@@ -135,10 +99,10 @@ export interface WindowsWorkerProps {
    */
   vpc: ec2.IVpc;
   /**
-   * Powershell Commands to execute
+   * Instance Role
    * @default - 'No default'.
    */
-  iamManagedPoliciesList?: IManagedPolicy[];
+  instanceRole: iam.Role;
   /**
    * The EC2 Instance type to use
    *
@@ -162,10 +126,6 @@ export interface WindowsWorkerProps {
   secretArn?: string;
   /**
    * KMSArn
-   */
-  kmsArn?: string;
-  /**
-   * Managed AD object to join to
    */
   madObject?: mad.CfnMicrosoftAD;
 }
